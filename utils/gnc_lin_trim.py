@@ -35,6 +35,9 @@ class Lin_Trim(F16_Model):
                 # [4]: throttle
 
         # outputs:
+            # xd -- Dictionary containing derivative states and values
+            # x -- Dictionary containing states and values
+            # u -- Dictionary containing control and values
     #########################################################################################
         #self.set_input_conditions(input_conditions)
         output = optimize.fmin(self.cost_function, initial_guess, args=(input_conditions,),\

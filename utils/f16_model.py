@@ -84,7 +84,7 @@ class F16_Model():
 
         # Inputs:
             # time            Scalar instance of time
-            # x               n element vector, state vector
+            # x               n element dictionary OR vector, state vector
                 # x(0)... True Airspeed, Vt (ft/sec)
                 # x(1)... Angle of Attack, alpha (rad)
                 # x(2)... Angle of Sideslip, beta (rad)
@@ -98,7 +98,7 @@ class F16_Model():
                 # x(10).. East Position, E (ft)
                 # x(11).. Altitude, h (ft)
                 # x(12).. power, (W)
-            # u               m element vector, control vector
+            # u               m element dictionary OR vector, control vector
                 # u(0)... throttle, throttle (0-1)
                 # u(1)... Elevator, del_el (deg)
                 # u(2)... Aileron, del_ail (deg)
@@ -110,48 +110,30 @@ class F16_Model():
             # Ay              Scalar, lateral acceleration (g)
     #########################################################################################
 
-        if type(x) == dict:
-            # Assign states to local variables. Convert from radians to degrees for AOA and AOS
-            Vt_fps = x['Airspeed']
-            alpha_rad = x['AOA']
-            alpha_deg = x['AOA']*self.r2d
-            beta_rad = x['AOS']
-            beta_deg = x['AOS']*self.r2d
-            phi_rad = x['Roll']
-            theta_rad = x['Pitch']
-            psi_rad = x['Yaw']
-            P_rps = x['Roll_Rate']
-            Q_rps = x['Pitch_Rate']
-            R_rps = x['Yaw_Rate']
-            alt_ft = x['Altitude']
-            power = x['Power']
-
-            # Assign controls to local variables. Leave surfaces in terms of degrees
-            throttle = u['Throttle']
-            del_el_deg = u['Elevator']
-            del_ail_deg = u['Aileron']
-            del_rud_deg = u['Rudder']
-
         if type(x) == np.ndarray:
-            Vt_fps = x[0][0]
-            alpha_rad = x[1][0]
-            alpha_deg = x[1][0]*self.r2d
-            beta_rad = x[2][0]
-            beta_deg = x[2][0]*self.r2d
-            phi_rad = x[3][0]
-            theta_rad = x[4][0]
-            psi_rad = x[5][0]
-            P_rps = x[6][0]
-            Q_rps = x[7][0]
-            R_rps = x[8][0]
-            alt_ft = x[11][0]
-            power = x[12][0]
+            x,u = self._x_u_vector_to_dict(x,u)
 
-            # Assign controls to local variables. Leave surfaces in terms of degrees
-            throttle = u[0][0]
-            del_el_deg = u[1][0]
-            del_ail_deg = u[2][0]
-            del_rud_deg = u[3][0]
+        # Assign states to local variables. Convert from radians to degrees for AOA and AOS
+        Vt_fps = x['Airspeed']
+        alpha_rad = x['AOA']
+        alpha_deg = x['AOA']*self.r2d
+        beta_rad = x['AOS']
+        beta_deg = x['AOS']*self.r2d
+        phi_rad = x['Roll']
+        theta_rad = x['Pitch']
+        psi_rad = x['Yaw']
+        P_rps = x['Roll_Rate']
+        Q_rps = x['Pitch_Rate']
+        R_rps = x['Yaw_Rate']
+        alt_ft = x['Altitude']
+        power = x['Power']
+
+        # Assign controls to local variables. Leave surfaces in terms of degrees
+        throttle = u['Throttle']
+        del_el_deg = u['Elevator']
+        del_ail_deg = u['Aileron']
+        del_rud_deg = u['Rudder']
+
 
         # Preallocate output memory
         xd = [None]*len(x)
@@ -912,6 +894,10 @@ class F16_Model():
         for i in range(9):
             self.damp_interp[i] = interpolate.interp1d(alphtab_deg, damp_tab[:,i])
 
+    def _x_u_vector_to_dict(self,x,u):
+        x_dict = dict(zip(self.x_names,x.flatten()))
+        u_dict = dict(zip(self.u_names,u.flatten()))
+        return x_dict, u_dict
 
 if __name__ == "__main__":
     f16 = F16_Model()
