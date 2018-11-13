@@ -1,4 +1,3 @@
-% AENG - 555 : Guidance and Control of Aerospace Vehicles
 % Saint Louis University
 % Ken Buckholtz, Ph.D.
 %
@@ -18,16 +17,14 @@ close all
 
 
 % Nonlinear dynamics model name.
-name = 'f16_nonlinear_model';
 tol=1e-6; 
 time=0.;
-
+name = 'f16_nonlinear_model';
 % Set the Xcg percentage of cbar.
 xcg = 0.3;
-
 % Trim condition on the state vector.  Obtain this from the trim routine.
-x = [525.6065
-     0.0337
+x = [500
+     0.0349
          0
          0
          0
@@ -37,13 +34,13 @@ x = [525.6065
          0
          0
          0
-         0
-    7.8053];
+         1
+    6.4803];
 xretain = [1:9,13];
 
 % Trim condition on the control vector.  Obtain this from the trim routine.
-u = [0.1202
-    -1.8533
+u = [0.0997888
+    -1.866
     0.0
     0.0];
 
@@ -154,6 +151,7 @@ for j=1:n
    end
 end
 % Insert output for q state (deg/sec), and AOA state (deg).
+
 c(2,8) = 180/pi;
 c(3,2) = 180/pi;
 % Compute the Jacobian of the D matrix by numerically computing the partial
@@ -201,6 +199,9 @@ Bm = B([1 2 5 8], 1:2);
 
 % Analysis of transfer function between pitch rate, q, output and elevator,
 % de, input.
+B([1,2,5,8],2)
+C(2,[1,2,5,8])
+D(2,2)
 [num,den] = ss2tf(Am,B([1 2 5 8],2),C(2,[1 2 5 8]),D(2,2));
 G = tf(num,den);
 G = zpk(G);

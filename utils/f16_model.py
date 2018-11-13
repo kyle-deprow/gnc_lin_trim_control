@@ -2,6 +2,9 @@
 
 import numpy as np
 from scipy import interpolate
+from scipy import signal
+
+import matplotlib.pyplot as plt
 
 class F16_Model():
     def __init__(self):
@@ -40,6 +43,40 @@ class F16_Model():
         self.zpq = self.axx*(self.axx - self.ayy) + self.axzs
         self.ypr = self.azz - self.axx
 
+        # Presetting Dictionary names
+        self.x_names = ['Airspeed',
+                        'AOA',
+                        'AOS',
+                        'Roll',
+                        'Pitch',
+                        'Yaw',
+                        'Roll_Rate',
+                        'Pitch_Rate',
+                        'Yaw_Rate',
+                        'North_Position',
+                        'East_Position',
+                        'Altitude',
+                        'Power']
+
+        self.xd_names = ['Airspeed_dot',
+                         'alpha_dot',
+                         'beta_dot',
+                         'Roll_Rate',
+                         'Pitch_Rate',
+                         'Yaw_Rate',
+                         'Roll_Rate_dot',
+                         'Pitch_Rate_dot',
+                         'Yaw_Rate_dot',
+                         'North_Position_dot',
+                         'East_Position_dot',
+                         'Altitude_dot',
+                         'Power_dot']
+
+        self.u_names = ['Throttle',
+                        'Elevator',
+                        'Aileron',
+                        'Rudder']
+
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     def nonlinear_model(self, time, x, u):
     #########################################################################################
@@ -72,34 +109,59 @@ class F16_Model():
             # Az              Scalar, vertical acceleration (g)
             # Ay              Scalar, lateral acceleration (g)
     #########################################################################################
-        # Assign states to local variables. Convert from radians to degrees for AOA and AOS
-        Vt_fps = x[0][0]
-        alpha_deg = x[1][0]*self.r2d
-        beta_deg = x[2][0]*self.r2d
-        phi_rad = x[3][0]
-        theta_rad = x[4][0]
-        psi_rad = x[5][0]
-        P_rps = x[6][0]
-        Q_rps = x[7][0]
-        R_rps = x[8][0]
-        alt_ft = x[11][0]
-        power = x[12][0]
+
+        if type(x) == dict:
+            # Assign states to local variables. Convert from radians to degrees for AOA and AOS
+            Vt_fps = x['Airspeed']
+            alpha_rad = x['AOA']
+            alpha_deg = x['AOA']*self.r2d
+            beta_rad = x['AOS']
+            beta_deg = x['AOS']*self.r2d
+            phi_rad = x['Roll']
+            theta_rad = x['Pitch']
+            psi_rad = x['Yaw']
+            P_rps = x['Roll_Rate']
+            Q_rps = x['Pitch_Rate']
+            R_rps = x['Yaw_Rate']
+            alt_ft = x['Altitude']
+            power = x['Power']
+
+            # Assign controls to local variables. Leave surfaces in terms of degrees
+            throttle = u['Throttle']
+            del_el_deg = u['Elevator']
+            del_ail_deg = u['Aileron']
+            del_rud_deg = u['Rudder']
+
+        if type(x) == np.ndarray:
+            Vt_fps = x[0][0]
+            alpha_rad = x[1][0]
+            alpha_deg = x[1][0]*self.r2d
+            beta_rad = x[2][0]
+            beta_deg = x[2][0]*self.r2d
+            phi_rad = x[3][0]
+            theta_rad = x[4][0]
+            psi_rad = x[5][0]
+            P_rps = x[6][0]
+            Q_rps = x[7][0]
+            R_rps = x[8][0]
+            alt_ft = x[11][0]
+            power = x[12][0]
+
+            # Assign controls to local variables. Leave surfaces in terms of degrees
+            throttle = u[0][0]
+            del_el_deg = u[1][0]
+            del_ail_deg = u[2][0]
+            del_rud_deg = u[3][0]
 
         # Preallocate output memory
-        xd = np.zeros([len(x),1])
-
-        # Assign controls to local variables. Leave surfaces in terms of degrees
-        throttle = u[0][0]
-        del_el_deg = u[1][0]
-        del_ail_deg = u[2][0]
-        del_rud_deg = u[3][0]
+        xd = [None]*len(x)
 
         # Compute air data parameters
         mach, qbar_psf = self.adc(Vt_fps, alt_ft)
 
         # Extract data from the engine model
         cpow = self.f16_tgear(throttle)
-        xd[12][0] = self.f16_del_power(power,cpow)
+        xd[12] = self.f16_del_power(power,cpow)
         T_lbs = self.f16_thrust(power, alt_ft, mach)
 
         # Aerodynamic coefficient lookups
@@ -134,10 +196,10 @@ class F16_Model():
 
         # Pre-compute some variables for the state space model.  Computations for
         # AOA and AOS must be in radians.
-        salp = np.sin(x[1][0])
-        calp = np.cos(x[1][0])
-        sbta = np.sin(x[2][0])
-        cbta = np.cos(x[2][0])
+        salp = np.sin(alpha_rad)
+        calp = np.cos(alpha_rad)
+        sbta = np.sin(beta_rad)
+        cbta = np.cos(beta_rad)
         sth = np.sin(theta_rad)
         cth = np.cos(theta_rad)
         sph = np.sin(phi_rad)
@@ -165,14 +227,14 @@ class F16_Model():
         wdot_fps2 = Q_rps*U_fps - P_rps*V_fps + gcth*cph + Az_fps2
         dum = (np.power(U_fps,2) + np.power(W_fps,2))
 
-        xd[0][0] = (U_fps*udot_fps2 + V_fps*vdot_fps2 + W_fps*wdot_fps2) / Vt_fps
-        xd[1][0] = (U_fps*wdot_fps2 - W_fps*udot_fps2) / dum
-        xd[2][0] = (Vt_fps*vdot_fps2 - V_fps*xd[0][0])*cbta / dum
+        xd[0] = (U_fps*udot_fps2 + V_fps*vdot_fps2 + W_fps*wdot_fps2) / Vt_fps
+        xd[1] = (U_fps*wdot_fps2 - W_fps*udot_fps2) / dum
+        xd[2] = (Vt_fps*vdot_fps2 - V_fps*xd[0])*cbta / dum
 
         # Kinematics.
-        xd[3][0] = P_rps + (sth/cth)*(qsph + R_rps*cph)
-        xd[4][0] = Q_rps*cph - R_rps*sph
-        xd[5][0] = (qsph + R_rps*cph) / cth
+        xd[3] = P_rps + (sth/cth)*(qsph + R_rps*cph)
+        xd[4] = Q_rps*cph - R_rps*sph
+        xd[5] = (qsph + R_rps*cph) / cth
 
         # Moments.
         roll = qsb*clt
@@ -183,9 +245,9 @@ class F16_Model():
         PR = P_rps*R_rps
         QHX = Q_rps*self.hx_slgft2
 
-        xd[6][0] = (self.xpq*PQ - self.xqr*QR + self.azz*roll + self.axz*(yaw + QHX)) / self.gam
-        xd[7][0] = (self.ypr*PR - self.axz*(np.power(P_rps,2) - np.power(R_rps,2)) + pitch - R_rps*self.hx_slgft2) / self.ayy
-        xd[8][0] = (self.zpq*PQ - self.xpq*QR + self.axz*roll + self.axx*(yaw + QHX)) / self.gam
+        xd[6] = (self.xpq*PQ - self.xqr*QR + self.azz*roll + self.axz*(yaw + QHX)) / self.gam
+        xd[7] = (self.ypr*PR - self.axz*(np.power(P_rps,2) - np.power(R_rps,2)) + pitch - R_rps*self.hx_slgft2) / self.ayy
+        xd[8] = (self.zpq*PQ - self.xpq*QR + self.axz*roll + self.axx*(yaw + QHX)) / self.gam
 
         # Navigation.
         t1 = sph*cpsi
@@ -200,15 +262,128 @@ class F16_Model():
         s7 = t2*spsi - t1
         s8 = cph*cth
 
-        xd[9][0] = U_fps*s1 + V_fps*s3 + W_fps*s6
-        xd[10][0] = U_fps*s2 + V_fps*s4 + W_fps*s7
-        xd[11][0] = U_fps*sth - V_fps*s5 - W_fps*s8
+        xd[9] = U_fps*s1 + V_fps*s3 + W_fps*s6
+        xd[10] = U_fps*s2 + V_fps*s4 + W_fps*s7
+        xd[11] = U_fps*sth - V_fps*s5 - W_fps*s8
+
+        xd_dict = dict(zip(self.xd_names,xd))
 
         # Set the outputs of the vertical and lateral accelerations, in g's
         Az = Az_fps2/self.g_fps2
         Ay = Ay_fps2/self.g_fps2
 
-        return xd, Az, Ay
+        return xd_dict, Az, Ay
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    def build_x_u(self, ux0, input_conditions):
+    #########################################################################################
+        # x               n element vector, state vector
+            # x(0)... True Airspeed, Vt (ft/sec)
+            # x(1)... Angle of Attack, alpha (rad)
+            # x(2)... Angle of Sideslip, beta (rad)
+            # x(3)... Roll attitude, phi (rad)
+            # x(4)... Pitch attitude, theta (rad)
+            # x(5)... Yaw attitude, psi (rad)
+            # x(6)... Roll rate, P (rad/sec)
+            # x(7)... Pitch rate, Q (rad/sec)
+            # x(8)... Yaw rate, R (rad/sec)
+            # x(9)... North Position, N (ft)
+            # x(10).. East Position, E (ft)
+            # x(11).. Altitude, h (ft)
+            # x(12).. power, (W)
+        # u               m element vector, control vector
+            # u(0)... throttle, throttle (0-1)
+            # u(1)... Elevator, del_el (deg)
+            # u(2)... Aileron, del_ail (deg)
+            # u(3)... Rudder, del_rud (deg)
+
+        # IMPORTANT -- FUNCTION RETURNS A DICTIONARY RESPONDING TO STATE, CONTROL VECTOR
+    #########################################################################################
+        # compute power
+        power = self.f16_tgear(ux0[4])
+
+        # build the state vector:
+        x = [input_conditions[0],
+             input_conditions[1],
+             ux0[0],
+             0,
+             0,
+             0,
+             0,
+             0,
+             0,
+             0,
+             0,
+             input_conditions[2],
+             power]
+
+        x_dict = dict(zip(self.x_names,x))
+
+        # build the control vector:
+        u = [ux0[4],                # throttle
+             ux0[1],                # del_el
+             ux0[3],                # del_aileron
+             ux0[2]]                # del_rudder
+
+        u_dict = dict(zip(self.u_names,u))
+        return x_dict, u_dict
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    def analyze_state(self, a, b, c, d):
+        xretain = np.array([0,1,2,3,4,5,6,7,8,12])
+        A = a[xretain,:][:,xretain]
+        B = b[xretain,:]
+        c[1,7] = 180/np.pi
+        c[2,1] = 180/np.pi
+        C = c[:,xretain]
+        D = d
+
+        # Create the Longitudinal Modes Matrix, A, by only using the states
+        # associated with Vt, AOA, theta and q.
+        ind = np.array([0,1,4,7])
+        Am = A[ind,:][:,ind]
+
+        # Create the Longitudinal Input Matrix, B, by only using the states
+        # associated with Vt, AOA, theta and q, and controls delT, dele.
+        Bm = B[ind,:][:,tuple([0,1])]
+
+        # Compute the eigenvalues and eigenvectors.
+        w,v = np.linalg.eig(Am)
+
+        # print(np.transpose(np.array(B[ind,:][:,1])))
+        # print(C[1][ind])
+        # print(D[2][2])
+        B_in = B[ind,:][:,1]
+        C_in = C[1][ind]
+        D_in = D[2][2]
+
+        B_in.shape = (4,1)
+        C_in.shape = (1,4)
+
+        num, den = signal.ss2tf(Am, B_in, C_in, D_in)
+        G = signal.TransferFunction(num,den)
+        #zpk = signal.tf2zpk(G.num,G.den)
+
+        # short period approximation
+        numa = np.array([1, 1.034])*-11.463
+        numb = np.array([1, 2.516, 4.023])
+        Ga = signal.TransferFunction(numa,numb)
+
+        w,mag,phase = signal.bode(G)
+        wa,maga,phasea = signal.bode(Ga)
+
+        plt.figure(1)
+        plt.subplot(211)
+        plt.semilogx(w,mag,'b-',label='Actual')
+        plt.semilogx(wa,maga,'b--',label='Aproximation')
+        plt.legend()
+        plt.subplot(212)
+        plt.semilogx(w,phase,'b-',label='Actual')
+        plt.semilogx(wa,phasea,'b--',label='Aproximation')
+        plt.legend()
+        plt.show()
+
+        return Am,Bm,0,0
 
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     def adc(self, v_fps, h_ft):
@@ -741,6 +916,6 @@ class F16_Model():
 if __name__ == "__main__":
     f16 = F16_Model()
     ux0 = np.array([0,-1.931,0,0,0.1485])
-    x = np.array([[500],[2*np.pi/180],[ux0[0]],[0],[0],[0],[0],[0],[0],[0],[0],[1],[f16.f16_tgear(ux0[4])]])
-    u = np.array([[ux0[4]],[ux0[1]],[ux0[3]],[ux0[2]]])
+    input_conditions = np.array([500,2*np.pi/180,1])
+    x,u = f16.build_x_u(ux0,input_conditions)
     print(f16.nonlinear_model(0,x,u))
