@@ -36,6 +36,7 @@ x = [500
          0
          1
     6.4803];
+
 xretain = [1:9,13];
 
 % Trim condition on the control vector.  Obtain this from the trim routine.
@@ -52,6 +53,7 @@ m = mm;
 % Set the number of outputs.
 p = 3;
 
+xd = f16_nonlinear_model(time,x,u)
 %{
 % Create the Jacobian for the A matrix by numerically computing the partial
 % derivatives of the state equations with respect to each state.
@@ -199,9 +201,9 @@ Bm = B([1 2 5 8], 1:2);
 
 % Analysis of transfer function between pitch rate, q, output and elevator,
 % de, input.
-B([1,2,5,8],2)
-C(2,[1,2,5,8])
-D(2,2)
+B([1,2,5,8],2);
+C(2,[1,2,5,8]);
+D(2,2);
 [num,den] = ss2tf(Am,B([1 2 5 8],2),C(2,[1 2 5 8]),D(2,2));
 G = tf(num,den);
 G = zpk(G);
