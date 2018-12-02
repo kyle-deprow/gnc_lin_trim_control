@@ -35,7 +35,10 @@ pow = f16_tgear(ux0(5));
 x = [Vt_fps;
      alpha_rad;
      ux0(1);
-     zeros(8,1);
+     0;
+     alpha_rad;
+     0;
+     zeros(5,1);
      alt_ft;
      pow];
 
@@ -53,6 +56,6 @@ xd = f16_nonlinear_model(0, x, u);
 
 % Compute the cost of this vector.  Desire this cost to be small.  The cost
 % is a weighted sum of the pertinent states squared.
-weight = [1;100;100;10;10;10];
+weight = [1;10;100;100;100];
 
-cost = weight'*[xd(1);xd(2);xd(3);xd(7);xd(8);xd(9)].^2;
+cost = weight'*[xd(13);xd(3);xd(7);xd(8);xd(9)].^2;

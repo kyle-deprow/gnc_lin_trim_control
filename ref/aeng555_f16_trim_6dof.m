@@ -17,9 +17,9 @@ format short g
 global Vt_fps alt_ft xcg alpha_rad
 
 % Flight condition.
-Vt_fps = 500; 
-alt_ft = 1;
-alpha_rad = 2*(pi/180);
+Vt_fps = 250;
+alt_ft = 5000;
+alpha_rad = -2*(pi/180);
     
 % Define xcg location.
 xcg = 0.30;

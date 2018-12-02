@@ -23,8 +23,8 @@ name = 'f16_nonlinear_model';
 % Set the Xcg percentage of cbar.
 xcg = 0.3;
 % Trim condition on the state vector.  Obtain this from the trim routine.
-x = [500
-     0.0349
+x = [250
+     -0.0349
          0
          0
          0
@@ -34,16 +34,16 @@ x = [500
          0
          0
          0
-         1
-    6.4803];
+         5000
+    10.943];
 
 xretain = [1:9,13];
 
 % Trim condition on the control vector.  Obtain this from the trim routine.
-u = [0.0997888
-    -1.866
+u = [0.16852
+    -1.23
     0.0
-    0.0];
+    0.000];
 
 % Set the number of states and controls.
 n = numel(x);
@@ -53,7 +53,7 @@ m = mm;
 % Set the number of outputs.
 p = 3;
 
-xd = f16_nonlinear_model(time,x,u)
+xd = f16_nonlinear_model(time,x,u);
 %{
 % Create the Jacobian for the A matrix by numerically computing the partial
 % derivatives of the state equations with respect to each state.
@@ -204,6 +204,7 @@ Bm = B([1 2 5 8], 1:2);
 B([1,2,5,8],2);
 C(2,[1,2,5,8]);
 D(2,2);
+Cm = C(2,[1 2 5 8]);
 [num,den] = ss2tf(Am,B([1 2 5 8],2),C(2,[1 2 5 8]),D(2,2));
 G = tf(num,den);
 G = zpk(G);

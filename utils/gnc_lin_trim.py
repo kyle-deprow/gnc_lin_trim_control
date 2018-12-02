@@ -2,10 +2,13 @@
 
 import numpy as np
 from scipy import optimize
-from f16_model import F16_Model
+try:
+    from utils.f16_model import F16_Model
+except:
+    from f16_model import F16_Model
 
-class Lin_Trim(F16_Model):
-    def __init__(self):
+class Lin_Trim():
+    def __init__(self, model):
     #########################################################################################
         # Version history:
             # Nov 9, 2018    initial release, inspired by .m code written by Dr. Buckholtz
@@ -13,7 +16,7 @@ class Lin_Trim(F16_Model):
             # Aircraft Control and Simulation, 2nd Edition
             # by Stevens and Lewis
     #########################################################################################
-        F16_Model.__init__(self)
+        self.model = model()
 
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     def trim(self, input_conditions, initial_guess):
@@ -42,15 +45,16 @@ class Lin_Trim(F16_Model):
         #self.set_input_conditions(input_conditions)
         output = optimize.fmin(self.cost_function, initial_guess, args=(input_conditions,),\
                                                    xtol=1e-10, ftol=1e-10, maxfun=5e04, maxiter=1e05, \
-                                                   full_output = True)
+                                                   full_output = True, disp=False)
 
         if output[4]:
             print('Trim algorithm DID NOT converge')
         else:
-            print('Trim algorithm converged.')
-            x,u = self.build_x_u(output[0],input_conditions)
-            xd = self.nonlinear_model(0, x, u)[0]
-            return xd, x, u
+            print('Trim algorithm converged. \n', \
+                  'input_conditions: ', input_conditions)
+            x,u = self.model.build_x_u(output[0],input_conditions)
+            xd,Ax,Ay = self.model.nonlinear_model(0, x, u)
+            return xd, x, u, Ax, Ay
 
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     def cost_function(self, ux0, input_conditions):
@@ -80,23 +84,16 @@ class Lin_Trim(F16_Model):
             # u           n-element vector, trimmed control vector
     #########################################################################################
 
-        x, u = self.build_x_u(ux0, input_conditions)
+        x, u = self.model.build_x_u(ux0, input_conditions)
 
         # compute the state derivatives
-        xd = self.nonlinear_model(0, x, u)[0]
+        xd = self.model.nonlinear_model(0, x, u)[0]
 
         # compute cost of vector.  cost is a weighted sum of the pertinent states required
+        #print(xd)
+        cost = self.model.determine_cost(xd, u)
         # we will drive this to zero
-        weight = np.array([1,10000,1000,10,10,10])
 
-        xd_array = np.array([xd['Airspeed_dot'],
-                             xd['alpha_dot'],
-                             xd['beta_dot'],
-                             xd['Roll_Rate_dot'],
-                             xd['Pitch_Rate_dot'],
-                             xd['Yaw_Rate_dot']])
-
-        cost = np.matmul(weight,(xd_array**2))
         return cost
 
 
@@ -121,7 +118,7 @@ class Lin_Trim(F16_Model):
         xt = np.zeros([n,1])
         m = len(u)
         ut = np.zeros([m,1])
-        tol = 1e-6
+        tol = 1e-3
         time = 0.
 
         usave = np.zeros([m,1])
@@ -137,25 +134,27 @@ class Lin_Trim(F16_Model):
             if dx[i][0] == 0.0:
                 dx[i][0] = 0.1
 
-        last = np.zeros([n,1])
         a = np.zeros([n,n])
+        last = np.zeros(n)
         for j in range(n):
             xt[:] = x[:]
-            for i in range(20):
+            for i in range(60):
                 xt[j][0] = x[j][0] + dx[j][0]
-                xd1 = self.nonlinear_model(time, xt, u)[0]
+                xd1 = self.model.nonlinear_model(time, xt, u)[0]
                 xd1 = self._dict_to_colvector(xd1)
                 xt[j][0] = x[j][0] - dx[j][0]
-                xd2 = self.nonlinear_model(time, xt, u)[0]
+                xd2 = self.model.nonlinear_model(time, xt, u)[0]
                 xd2 = self._dict_to_colvector(xd2)
-                a[:,j]= np.divide(np.subtract(xd1,xd2),(2*dx[j][0]))[:,0]
+                a[:,j] = np.divide(np.subtract(xd1,xd2),(2*dx[j][0]))[:,0]
+                a[:,j] = self._massage_vector(a[:,j])
+
                 if np.amax(np.divide(np.absolute(np.subtract(a[:,j],last)),np.absolute(a[:,j] + 1e-12))) < tol:
                     break
-                dx[j][0] = 0.5*dx[j][0]
-                last = a[:,j]
+                dx[j][0] = 0.125*dx[j][0]
+                last[:] = np.transpose(a[:,j])
             # column=j
             iteration = i
-            if iteration==19:
+            if iteration==60-1:
                 print('not converged on A, column: '+str(j))
 
         # Create the Jacobian for the B matrix by numerically computing the partial
@@ -165,22 +164,24 @@ class Lin_Trim(F16_Model):
             if du[i][0]==0.0:
                 du[i][0]=0.1
 
-        last = np.zeros(n)
         b = np.zeros([n,m])
         for j in range(m):
+            last = np.zeros(n)
             ut[:] = u[:]
             for i in range(10):
                 u[j][0] = ut[j][0] + du[j][0]
-                xd1 = self.nonlinear_model(time, x, u)[0]
+                xd1 = self.model.nonlinear_model(time, x, u)[0]
                 xd1 = self._dict_to_colvector(xd1)
                 u[j][0] = ut[j][0] - du[j][0]
-                xd2 = self.nonlinear_model(time, x, u)[0]
+                xd2 = self.model.nonlinear_model(time, x, u)[0]
                 xd2 = self._dict_to_colvector(xd2)
                 b[:,j]= np.divide(np.subtract(xd1,xd2),(2*du[j][0]))[:,0]
+                b[:,j] = self._massage_vector(b[:,j])
+
                 if np.amax(np.divide(np.absolute(np.subtract(b[:,j],last)), np.absolute(b[:,j] + 1e-12))) < tol:
                     break
-                du[j][0] = 0.5*du[j][0]
-                last = b[:,j]
+                du[j][0] = 0.25*du[j][0]
+                last[:] = b[:,j]
             # column=j
             iteration = i
             if iteration==10:
@@ -195,22 +196,22 @@ class Lin_Trim(F16_Model):
                 if dx[i][0] == 0.0:
                     dx[i][0] = 0.1
 
-            last = np.zeros([p,1])
             c = np.zeros([p,n])
             for j in range(n):
+                last = np.zeros(p)
                 xt[:] = x[:]
                 for i in range(10):
                     xt[j][0] = x[j][0] + dx[j][0]
-                    xd1,az1 = self.nonlinear_model(time, xt, u)[:2]
+                    xd1,az1 = self.model.nonlinear_model(time, xt, u)[:2]
                     xd1 = self._dict_to_colvector(xd1)
                     xt[j][0] = x[j][0] - dx[j][0]
-                    xd2,az2 = self.nonlinear_model(time, xt, u)[:2]
+                    xd2,az2 = self.model.nonlinear_model(time, xt, u)[:2]
                     xd2 = self._dict_to_colvector(xd2)
                     c[0][j] = (az1-az2)/(2*dx[j][0])
                     if np.amax(np.divide(np.absolute(np.subtract(c[:,j],last)), np.absolute(c[:,j] + 1e-12))) < tol:
                         break
-                    dx[j][0] = 0.5*dx[j][0]
-                    last = c[:,j]
+                    dx[j][0] = 0.125*dx[j][0]
+                    last[:] = c[:,j]
                 # column=j
                 iteration = i
                 if iteration==10:
@@ -223,27 +224,28 @@ class Lin_Trim(F16_Model):
                if du[i][0] == 0.0:
                   du[i][0] = 0.1
 
-            last = np.zeros([p,1])
             d = np.zeros([p,m])
             u[:] = usave[:]
             for j in range(m):
+                last = np.zeros(p)
                 ut[:] = u[:]
                 for i in range(10):
                     u[j][0] = ut[j][0] + du[j][0]
-                    xd1,az1,ay1 = self.nonlinear_model(time,x,u)
+                    xd1,az1,ay1 = self.model.nonlinear_model(time,x,u)
                     xd1 = self._dict_to_colvector(xd1)
                     u[j][0] = ut[j][0] - du[j][0]
-                    xd2,az2,ay2 = self.nonlinear_model(time,x,u)
+                    xd2,az2,ay2 = self.model.nonlinear_model(time,x,u)
                     xd2 = self._dict_to_colvector(xd2)
                     d[0][j] = (az1-az2)/(2*du[j][0])
                     if np.amax(np.divide(np.absolute(np.subtract(d[:,j],last)), np.absolute(d[:,j] + 1e-12))) < tol:
                         break
-                    du[j][0] = 0.5*du[j][0]
-                    last = d[:,j]
+                    du[j][0] = 0.125*du[j][0]
+                    last[:] = d[:,j]
                #column=j
                 iteration = i
                 if iteration==10:
                     print('Not Converged on D, column: ' + str(j))
+
             return a,b,c,d
         # Return a,b if full_output is not requested
         else:
@@ -328,21 +330,26 @@ class Lin_Trim(F16_Model):
         l = [[x] for x in dictionary.values()]
         return np.array(l)
 
+    def _massage_vector(self, vector):
+        vector[np.where(np.absolute(vector)<1e-10)[0]] = 0
+        return vector
+
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 if __name__ == "__main__":
-    lintrim = Lin_Trim()
+    lintrim = Lin_Trim(F16_Model)
     # ic = [Vt_fps, AOA, altitude]
-    input_conditions = np.array([500,2*np.pi/180,1])
+    input_conditions = np.array([350.0,4*np.pi/180,5000])
     # initial guess for controls
     ux0 = np.array([0,-1.931,0,0,0.1485])
     # find trimmed x_dot, x, and u states
     # return is a dictionary with states labeled
-    xd, x, u = lintrim.trim(input_conditions, ux0)
+    xd, x, u = lintrim.trim(input_conditions, ux0)[:3]
     # find linear matrices a and b
-    a,b = lintrim.linearize_nonlinear_model(x, u)
+    a,b,c,d = lintrim.linearize_nonlinear_model(x, u, full_output=True)
     # Pull longitudinal and latiduinal(?) matrices from A
-    Alon, Blon, Alat, Blat = lintrim.build_state_matrices(a,b)
+    Alon, Blon = lintrim.model.build_long_state_matrices(a,b)
+    Alat, Blat = lintrim.model.build_lat_state_matrices(a,b)
     lon_sens, lon_metric = lintrim.perform_mode_analysis(Alon)
-    lat_sens, lat_metric = lintrim.perform_mode_analysis(Alat)
+    #lat_sens, lat_metric = lintrim.perform_mode_analysis(Alat)
 
 

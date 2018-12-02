@@ -77,6 +77,7 @@ class F16_Model():
 
         self.long_ind = np.array([0,1,4,7])
         self.lat_ind = np.array([2,3,6,8])
+        self.states_retain = np.array([0,1,2,3,4,5,6,7,8,12])
 
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     def nonlinear_model(self, time, x, u):
@@ -290,7 +291,7 @@ class F16_Model():
              input_conditions[1],
              ux0[0],
              0,
-             0,
+             input_conditions[1],
              0,
              0,
              0,
@@ -312,12 +313,44 @@ class F16_Model():
         return x_dict, u_dict
 
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    def build_state_matrices(self, a, b):
-        Alon = a[self.long_ind,:][:,self.long_ind]
-        Blon = b[self.long_ind,:][0]
-        Alat = a[self.lat_ind,:][:,self.lat_ind]
-        Blat = b[self.long_ind,:][1]
-        return Alon, Blon, Alat, Blat
+    def build_long_state_matrices(self, a, b, c=None, d=None, full_output=False):
+        A = a[self.long_ind,:][:,self.long_ind]
+        B = b[self.long_ind,:][:,0:2]
+        if full_output:
+            c[1][7] = 180/np.pi
+            c[2][1] = 180/np.pi
+
+            C = c[:,self.long_ind]
+            D = d[:,0:2]
+            return A,B,C,D
+        return A,B
+
+    def build_lat_state_matrices(self, a, b, c=None, d=None, full_output=False):
+        A = a[self.lat_ind,:][:,self.lat_ind]
+        B = b[self.lat_ind,:][0]
+        if full_output:
+            C = c[1][self.lat_ind]
+            D = d[1][1]
+            return A,B,C,D
+        return A, B
+
+#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    def determine_cost(self, xd, u=None):
+        weight = np.array([1,10,100,100,100])
+
+        cost_array = np.array([xd['Power_dot'],
+                               xd['beta_dot'],
+                               xd['Roll_Rate_dot'],
+                               xd['Pitch_Rate_dot'],
+                               xd['Yaw_Rate_dot']])
+
+
+        if u['Throttle'] < 0:
+            cost = 10000000
+        else:
+            cost = np.matmul(weight,(cost_array**2))
+
+        return cost
 
 #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     def adc(self, v_fps, h_ft):

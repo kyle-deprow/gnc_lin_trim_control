@@ -53,6 +53,10 @@ end
 for i = 1:n
     % Get the real and imaginary components of the mode.
     Relambda = real(D(i,i));
+    %if i == 1
+        %D(i,i)
+        %Relambda
+    %end
     Imlambda = imag(D(i,i));
     
     % Check if mode is purely oscillatory.
@@ -88,5 +92,4 @@ for i = 1:n
         % Store the ratio.
         Mmetric(3,i) = Nhalf;
     end
-    Mmetric
 end

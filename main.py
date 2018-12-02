@@ -1,18 +1,103 @@
 #! /usr/bin/python3
 
 from utils.gnc_lin_trim import Lin_Trim
-import matplotlib.pyplot as plt
+from utils.f16_model import F16_Model
+from utils.gnc_data_structure import gnc_data_structure
+from utils.plot import plot_gnc_object
+
 import numpy as np
+import pymp
 
 if __name__ == "__main__":
-    lintrim = Lin_Trim()
+    lintrim = Lin_Trim(F16_Model)
 
     altitude_ft_array = np.array([5000])
     V_fps_array = np.array([250,300,350,400,450,500])
+    #V_fps_array = np.array([300, 350.0])
     alpha_rad_array = np.array([-2,0,2,4,6])*(np.pi/180)
+    #alpha_rad_array = np.array([2,4])*np.pi/180
 
-    count_array = np.arange(len(altitude_ft_array)*len(alpha_rad_array)*len(V_fps_array))
+    count_array = np.arange(1,len(altitude_ft_array)*len(alpha_rad_array)*len(V_fps_array)+1)
 
+    gnc_struct = gnc_data_structure(count_array)
+
+    i = 0
     for altitude in altitude_ft_array:
         for V_fps in V_fps_array:
             for alpha_rad in alpha_rad_array:
+                gnc_struct.altitude[i] = altitude
+                gnc_struct.V_fps[i] = V_fps
+                gnc_struct.alpha_rad[i] = alpha_rad
+                i += 1
+
+    shared_Vfps = pymp.shared.array(gnc_struct.len_count)
+    shared_altitude = pymp.shared.array(gnc_struct.len_count)
+    shared_alpha = pymp.shared.array(gnc_struct.len_count)
+    shared_beta = pymp.shared.array(gnc_struct.len_count)
+    shared_cx = pymp.shared.array(gnc_struct.len_count)
+    shared_cy = pymp.shared.array(gnc_struct.len_count)
+    shared_cz = pymp.shared.array(gnc_struct.len_count)
+    shared_Nz = pymp.shared.array(gnc_struct.len_count)
+    shared_alpha_dot = pymp.shared.array(gnc_struct.len_count)
+    shared_beta_dot = pymp.shared.array(gnc_struct.len_count)
+    shared_del_el = pymp.shared.array(gnc_struct.len_count)
+    shared_del_ail = pymp.shared.array(gnc_struct.len_count)
+    shared_del_rud = pymp.shared.array(gnc_struct.len_count)
+    shared_Alon = pymp.shared.array([gnc_struct.len_count,4,4])
+    shared_Alat = pymp.shared.array([gnc_struct.len_count,4,4])
+    shared_long_half_amp = pymp.shared.array([gnc_struct.len_count,2])
+    shared_lat_half_amp = pymp.shared.array([gnc_struct.len_count,3])
+
+    proc = 3
+    shared_Vfps[:] = gnc_struct.V_fps[:]
+    shared_altitude[:] = gnc_struct.altitude[:]
+    shared_alpha[:] = gnc_struct.alpha_rad[:]
+    with pymp.Parallel(proc) as p:
+        for i in p.range(len(count_array)):
+            V_fps = shared_Vfps[i]
+            altitude = shared_altitude[i]
+            alpha_rad = shared_alpha[i]
+
+            input_conditions = np.array([V_fps,alpha_rad,altitude])
+            initial_control_guess = np.array([0,-1.931,0,0,0.1485])
+
+            xd,x,u,Az,Ay = lintrim.trim(input_conditions,initial_control_guess)
+            a,b = lintrim.linearize_nonlinear_model(x,u)
+
+            Alon,Blon = lintrim.model.build_long_state_matrices(a,b)
+            Alat,Blat = lintrim.model.build_lat_state_matrices(a,b)
+            lon_sens, lon_metric = lintrim.perform_mode_analysis(Alon)
+            lat_sens, lat_metric = lintrim.perform_mode_analysis(Alat)
+
+            shared_beta[i] = x['AOS']
+            shared_Nz[i] = -Az
+            shared_alpha_dot[i] = xd['alpha_dot']
+            shared_beta_dot[i] = xd['beta_dot']
+            shared_del_el[i] = u['Elevator']
+            shared_del_ail[i] = u['Aileron']
+            shared_del_rud[i] = u['Rudder']
+            shared_Alon[i] = Alon
+            shared_Alat[i] = Alat
+            shared_long_half_amp[i] = np.sort(np.unique(lon_metric[0][np.where(lon_metric[0]>0)[0]]))
+            dutch_roll = np.unique(lat_metric[0][np.where(np.invert(np.isnan(lat_metric[1])))[0]])
+            roll_spiral = np.sort(lat_metric[0][np.where(np.isnan(lat_metric[1]))[0]])
+            shared_lat_half_amp[i] = np.append(dutch_roll, roll_spiral)
+
+    gnc_struct.beta_rad[:] = shared_beta[:]
+    gnc_struct.Nz[:] = shared_Nz[:]
+    gnc_struct.alpha_dot[:] = shared_alpha_dot[:]
+    gnc_struct.beta_dot[:] = shared_beta_dot[:]
+    gnc_struct.del_el_deg[:] = shared_del_el[:]
+    gnc_struct.del_ail_deg[:] = shared_del_ail[:]
+    gnc_struct.del_rud_deg[:] = shared_del_rud[:]
+    gnc_struct.Alon[:] = shared_Alon[:]
+    gnc_struct.Alat[:] = shared_Alat[:]
+    gnc_struct.long_half_amp[:] = shared_long_half_amp[:]
+    gnc_struct.lat_half_amp[:] = shared_lat_half_amp[:]
+
+    del shared_altitude, shared_Vfps, shared_alpha, shared_beta, \
+        shared_Nz, shared_alpha_dot, shared_beta_dot, \
+        shared_del_el, shared_del_ail, shared_del_rud, shared_Alon, \
+        shared_Alat, shared_long_half_amp, shared_lat_half_amp
+
+    plot_gnc_object(gnc_struct)

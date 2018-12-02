@@ -17,7 +17,7 @@ end
 last=zeros(n,1);  a=zeros(n,n);
 for j=1:n
    xt=x;
-   for i=1:20
+   for i=1:60
       xt(j)=x(j)+dx(j);
       xd1= feval(name,time,xt,[u;u1]);
       xt(j)=x(j)-dx(j);
@@ -26,7 +26,7 @@ for j=1:n
       if max( abs(a(:,j)-last)./abs( a(:,j) + 1e-12 ) )<tol;
          break
       end
-      dx(j)= 0.5*dx(j);
+      dx(j)= 0.125*dx(j);
       last = a(:,j);
    end
    %column=j
@@ -47,6 +47,7 @@ for i=1:m
 end
 last=zeros(n,1); b=zeros(n,m);
 for j=1:m
+   last=zeros(n,1);
    usave=u;
    for i=1:10
       u(j)=usave(j)+du(j);
