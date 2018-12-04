@@ -40,6 +40,9 @@ if __name__ == "__main__":
     shared_Nz = pymp.shared.array(gnc_struct.len_count)
     shared_alpha_dot = pymp.shared.array(gnc_struct.len_count)
     shared_beta_dot = pymp.shared.array(gnc_struct.len_count)
+    shared_roll_rate_dot = pymp.shared.array(gnc_struct.len_count)
+    shared_pitch_rate_dot = pymp.shared.array(gnc_struct.len_count)
+    shared_yaw_rate_dot = pymp.shared.array(gnc_struct.len_count)
     shared_del_el = pymp.shared.array(gnc_struct.len_count)
     shared_del_ail = pymp.shared.array(gnc_struct.len_count)
     shared_del_rud = pymp.shared.array(gnc_struct.len_count)
@@ -73,6 +76,9 @@ if __name__ == "__main__":
             shared_Nz[i] = -Az
             shared_alpha_dot[i] = xd['alpha_dot']
             shared_beta_dot[i] = xd['beta_dot']
+            shared_roll_rate_dot[i] = xd['Roll_Rate_dot']
+            shared_pitch_rate_dot[i] = xd['Pitch_Rate_dot']
+            shared_yaw_rate_dot[i] = xd['Yaw_Rate_dot']
             shared_del_el[i] = u['Elevator']
             shared_del_ail[i] = u['Aileron']
             shared_del_rud[i] = u['Rudder']
@@ -87,6 +93,9 @@ if __name__ == "__main__":
     gnc_struct.Nz[:] = shared_Nz[:]
     gnc_struct.alpha_dot[:] = shared_alpha_dot[:]
     gnc_struct.beta_dot[:] = shared_beta_dot[:]
+    gnc_struct.roll_rate_dot[:] = shared_roll_rate_dot[:]
+    gnc_struct.pitch_rate_dot[:] = shared_pitch_rate_dot[:]
+    gnc_struct.yaw_rate_dot[:] = shared_yaw_rate_dot[:]
     gnc_struct.del_el_deg[:] = shared_del_el[:]
     gnc_struct.del_ail_deg[:] = shared_del_ail[:]
     gnc_struct.del_rud_deg[:] = shared_del_rud[:]
@@ -98,6 +107,7 @@ if __name__ == "__main__":
     del shared_altitude, shared_Vfps, shared_alpha, shared_beta, \
         shared_Nz, shared_alpha_dot, shared_beta_dot, \
         shared_del_el, shared_del_ail, shared_del_rud, shared_Alon, \
-        shared_Alat, shared_long_half_amp, shared_lat_half_amp
+        shared_Alat, shared_long_half_amp, shared_lat_half_amp, \
+        shared_roll_rate_dot, shared_pitch_rate_dot, shared_yaw_rate_dot
 
     plot_gnc_object(gnc_struct)
