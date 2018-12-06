@@ -1,3 +1,4 @@
+
 %**************************************************************************
 %
 % AENG-555 : Automatic Control Systems
@@ -33,28 +34,6 @@ step_mag = 1*dtr;
 % Define the state space model for the three body problem.
 %sys_ss = ContExample_model();
 % Parameter definitions
-%M   = 10;   % kg
-%B1  = 10;   % Nm-sec
-%J1  = 15;   % Nm-sec^2
-%J2  = 15;   % Nm-sec^2
-%B2  = 100;  % N-sec/m
-%K1  = 100;  % Nm/rad
-%K2  = 130;  % N/m
-%K3  = 160;  % N/m
-%R   = 1;    % m
-
-%% Define the state space matrices (A, B).
-%A   = [0, 1, 0, 0, 0, 0;
-       %-K1/J1, 0, K1/J1, 0, 0, 0;
-       %0, 0, 0, 1, 0, 0;
-       %K1/J2, 0, -(K1+R^2*K2)/J2, -B1/J2, R*K2/J2, 0;
-       %0, 0, 0, 0, 0, 1;
-       %0, 0, R*K2/M, 0, -(K2+K3)/M, -B2/M];
-   
-%B   = [0; 1/J1; 0; 0; 0; 0];
-
-A = [-0.008467, 37.4, -32.17, 0.7555; -0.00049587, -0.485739, 0, 0.9244; 0,0,0,1; 0, -0.1832, 0, -0.41797];
-B = [0.0547; -0.00091; 0; -0.03668];
 
 [n,m] = size(B);
 
@@ -77,7 +56,7 @@ p = size(sys_ss.c,1);
     
 %s%%%%%%%%% Optimal Control: Tracker %%%%%%%%%%
 % Define to track rotational position of J2.
-Creg = [0,0,1,0];
+Creg = [0,0,1,0,0,0];
 Dreg = sys_ss.d(3,:);
 nreg = 1;
 
@@ -97,7 +76,7 @@ q = logspace(1,6,300);
 
 % Specify the LQR matrices.
 Qw = zeros(n+nreg, n+nreg);
-Qw(n+nreg,n+nreg) = 3000;
+Qw(5,5) = 3000;
 
 Rw = 1*eye(m);
 Rw = 0.01*eye(m);
@@ -111,14 +90,15 @@ sys_p.Bp = sys_ss.B;
 sys_p.Cp = eye(n);
 sys_p.Dp = zeros(n,1);
 
-% Pass in the characteristics of the system.  Note, this process % returns plots.  This process assumes Dreg == 0.
-control_data = perform_charting(sys_p, Aw, Bw, Creg, Qw, Rw, q, w);
+% Pass in the characteristics of the system.  Note, this process
+% returns plots.  This process assumes Dreg == 0.
+%control_data = perform_charting(sys_p, Aw, Bw, Creg, Qw, Rw, q, w);
     
 
 %%%%%%%%%% Perform Selected Design %%%%%%%%%%
 % Set the integral error state weights to the desired scale factor.
 for j = 1:nreg
-    Qw(j,j) = 400000;
+    Qw(j,j) = 600000;
 end
 
 % Solve the LQR problem.
@@ -141,28 +121,28 @@ sys_c.Dc2= zeros(m,nreg);
 
 %% Perform a step response.
 syscl = ss(Acl,Bcl,Ccl,Dcl);
-[yoptimal, timeoptimal_sec, x] = step(syscl*step_mag,3);
+[yoptimal, timeoptimal_sec, x] = step(syscl*step_mag);
 
 %% Reconstruct the control.
-uoptimal = -Kw(:,[nreg+1:nreg+n,1:nreg])*x';
+uoptimal = -Kw(:,[nreg+1:nreg+n,1:nreg])*x'
 
-figure
-plot(timeoptimal_sec,yoptimal(:,3)*rtd,'-b', 'LineWidth', 2);grid on
-xlabel('Time, sec');
-ylabel('\theta, deg');
-title('Step response for servomechanism designs');
-
-
-figure
-plot(timeoptimal_sec, uoptimal,'-b', 'LineWidth', 2); grid on;
-xlabel('Time, sec');
-ylabel('\delta_{Elevator}, degrees');
-title('Control for servomechanism designs');
+%figure
+%plot(timeoptimal_sec,yoptimal(:,3)*rtd,'-b', 'LineWidth', 2);grid on
+%xlabel('Time, sec');
+%ylabel('\theta_2, deg');
+%title('Step response for servomechanism designs');
 
 
-%%%%% FREQUENCY ANALYSIS %%%%%
-% Perform frequency analysis of servo tracker.
-freq_resp = freq_analysis(sys_p, sys_c, w, 1, 3);
+%figure
+%plot(timeoptimal_sec, uoptimal,'-b', 'LineWidth', 2); grid on;
+%xlabel('Time, sec');
+%ylabel('\tau, ftlbs');
+%title('Control for servomechanism designs');
 
-% Plot frequency data.
-plot_freq_resp(freq_resp, w);
+
+%%%%%% FREQUENCY ANALYSIS %%%%%
+%% Perform frequency analysis of servo tracker.
+%freq_resp = freq_analysis(sys_p, sys_c, w, 1, 3);
+
+%% Plot frequency data.
+%plot_freq_resp(freq_resp, w);
