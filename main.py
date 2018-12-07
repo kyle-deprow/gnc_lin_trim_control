@@ -7,8 +7,10 @@ from utils.plot import plot_gnc_object
 
 import numpy as np
 import pymp
+import time
 
 if __name__ == "__main__":
+    t1 = time.time()
     lintrim = Lin_Trim(F16_Model)
 
     altitude_ft_array = np.array([5000])
@@ -51,7 +53,7 @@ if __name__ == "__main__":
     shared_long_half_amp = pymp.shared.array([gnc_struct.len_count,2])
     shared_lat_half_amp = pymp.shared.array([gnc_struct.len_count,3])
 
-    proc = 3
+    proc = 4
     shared_Vfps[:] = gnc_struct.V_fps[:]
     shared_altitude[:] = gnc_struct.altitude[:]
     shared_alpha[:] = gnc_struct.alpha_rad[:]
@@ -110,4 +112,5 @@ if __name__ == "__main__":
         shared_Alat, shared_long_half_amp, shared_lat_half_amp, \
         shared_roll_rate_dot, shared_pitch_rate_dot, shared_yaw_rate_dot
 
+    print(time.time()-t1)
     plot_gnc_object(gnc_struct)
