@@ -4,20 +4,19 @@ from utils.gnc_lin_trim import Lin_Trim
 from utils.f16_model import F16_Model
 from utils.gnc_data_structure import gnc_data_structure
 from utils.plot import plot_gnc_object
+from utils.gnc_control import LQR_Controller
 
 import numpy as np
-import pymp
 import time
 
 if __name__ == "__main__":
     t1 = time.time()
     lintrim = Lin_Trim(F16_Model)
+    controller = LQR_Controller()
 
-    altitude_ft_array = np.array([5000])
+    altitude_ft_array = np.array([1000,5000])
     V_fps_array = np.array([250,300,350,400,450,500])
-    #V_fps_array = np.array([300, 350.0])
     alpha_rad_array = np.array([-2,0,2,4,6])*(np.pi/180)
-    #alpha_rad_array = np.array([2,4])*np.pi/180
 
     count_array = np.arange(1,len(altitude_ft_array)*len(alpha_rad_array)*len(V_fps_array)+1)
 
@@ -32,85 +31,51 @@ if __name__ == "__main__":
                 gnc_struct.alpha_rad[i] = alpha_rad
                 i += 1
 
-    shared_Vfps = pymp.shared.array(gnc_struct.len_count)
-    shared_altitude = pymp.shared.array(gnc_struct.len_count)
-    shared_alpha = pymp.shared.array(gnc_struct.len_count)
-    shared_beta = pymp.shared.array(gnc_struct.len_count)
-    shared_cx = pymp.shared.array(gnc_struct.len_count)
-    shared_cy = pymp.shared.array(gnc_struct.len_count)
-    shared_cz = pymp.shared.array(gnc_struct.len_count)
-    shared_Nz = pymp.shared.array(gnc_struct.len_count)
-    shared_alpha_dot = pymp.shared.array(gnc_struct.len_count)
-    shared_beta_dot = pymp.shared.array(gnc_struct.len_count)
-    shared_roll_rate_dot = pymp.shared.array(gnc_struct.len_count)
-    shared_pitch_rate_dot = pymp.shared.array(gnc_struct.len_count)
-    shared_yaw_rate_dot = pymp.shared.array(gnc_struct.len_count)
-    shared_del_el = pymp.shared.array(gnc_struct.len_count)
-    shared_del_ail = pymp.shared.array(gnc_struct.len_count)
-    shared_del_rud = pymp.shared.array(gnc_struct.len_count)
-    shared_Alon = pymp.shared.array([gnc_struct.len_count,4,4])
-    shared_Alat = pymp.shared.array([gnc_struct.len_count,4,4])
-    shared_long_half_amp = pymp.shared.array([gnc_struct.len_count,2])
-    shared_lat_half_amp = pymp.shared.array([gnc_struct.len_count,3])
+    Q = 250000
+    R = 0.01
+    Q_end = 300
+    reg_array = np.array([2])
 
-    proc = 4
-    shared_Vfps[:] = gnc_struct.V_fps[:]
-    shared_altitude[:] = gnc_struct.altitude[:]
-    shared_alpha[:] = gnc_struct.alpha_rad[:]
-    with pymp.Parallel(proc) as p:
-        for i in p.range(len(count_array)):
-            V_fps = shared_Vfps[i]
-            altitude = shared_altitude[i]
-            alpha_rad = shared_alpha[i]
+    for i in range(len(count_array)):
+        V_fps = gnc_struct.V_fps[i]
+        altitude = gnc_struct.altitude[i]
+        alpha_rad = gnc_struct.alpha_rad[i]
 
-            input_conditions = np.array([V_fps,alpha_rad,altitude])
-            initial_control_guess = np.array([0,-1.931,0,0,0.1485])
+        input_conditions = np.array([V_fps,alpha_rad,altitude])
+        initial_control_guess = np.array([0,-1.931,0,0,0.1485])
 
-            xd,x,u,Az,Ay = lintrim.trim(input_conditions,initial_control_guess)
-            a,b = lintrim.linearize_nonlinear_model(x,u)
+        xd,x,u,Az,Ay = lintrim.trim(input_conditions,initial_control_guess)
+        a,b = lintrim.linearize_nonlinear_model(x,u)
 
-            Alon,Blon = lintrim.model.build_long_state_matrices(a,b)
-            Alat,Blat = lintrim.model.build_lat_state_matrices(a,b)
-            lon_sens, lon_metric = lintrim.perform_mode_analysis(Alon)
-            lat_sens, lat_metric = lintrim.perform_mode_analysis(Alat)
+        Alon,Blon = lintrim.model.build_long_state_matrices(a,b)
+        Blon = Blon[:,1].reshape((Blon.shape[0],1))
+        
+        Alat,Blat = lintrim.model.build_lat_state_matrices(a,b)
+        lon_sens, lon_metric = lintrim.perform_mode_analysis(Alon)
+        lat_sens, lat_metric = lintrim.perform_mode_analysis(Alat)
 
-            shared_beta[i] = x['AOS']
-            shared_Nz[i] = -Az
-            shared_alpha_dot[i] = xd['alpha_dot']
-            shared_beta_dot[i] = xd['beta_dot']
-            shared_roll_rate_dot[i] = xd['Roll_Rate_dot']
-            shared_pitch_rate_dot[i] = xd['Pitch_Rate_dot']
-            shared_yaw_rate_dot[i] = xd['Yaw_Rate_dot']
-            shared_del_el[i] = u['Elevator']
-            shared_del_ail[i] = u['Aileron']
-            shared_del_rud[i] = u['Rudder']
-            shared_Alon[i] = Alon
-            shared_Alat[i] = Alat
-            shared_long_half_amp[i] = np.sort(np.unique(lon_metric[0][np.where(lon_metric[0]>0)[0]]))
-            dutch_roll = np.unique(lat_metric[0][np.where(np.invert(np.isnan(lat_metric[1])))[0]])
-            roll_spiral = np.sort(lat_metric[0][np.where(np.isnan(lat_metric[1]))[0]])
-            shared_lat_half_amp[i] = np.append(dutch_roll, roll_spiral)
+        gnc_struct.beta_rad[i] = x['AOS']
+        gnc_struct.Nz[i] = -Az
+        gnc_struct.alpha_dot[i] = xd['alpha_dot']
+        gnc_struct.beta_dot[i] = xd['beta_dot']
+        gnc_struct.roll_rate_dot[i] = xd['Roll_Rate_dot']
+        gnc_struct.pitch_rate_dot[i] = xd['Pitch_Rate_dot']
+        gnc_struct.yaw_rate_dot[i] = xd['Yaw_Rate_dot']
+        gnc_struct.del_el_deg[i] = u['Elevator']
+        gnc_struct.del_ail_deg[i] = u['Aileron']
+        gnc_struct.del_rud_deg[i] = u['Rudder']
+        gnc_struct.Alon[i] = Alon
+        gnc_struct.Alat[i] = Alat
+        gnc_struct.long_half_amp[i] = np.sort(np.unique(lon_metric[0][np.where(lon_metric[0]>0)[0]]))
+        dutch_roll = np.unique(lat_metric[0][np.where(np.invert(np.isnan(lat_metric[1])))[0]])
+        roll_spiral = np.sort(lat_metric[0][np.where(np.isnan(lat_metric[1]))[0]])
+        gnc_struct.lat_half_amp[i] = np.append(dutch_roll, roll_spiral)
 
-    gnc_struct.beta_rad[:] = shared_beta[:]
-    gnc_struct.Nz[:] = shared_Nz[:]
-    gnc_struct.alpha_dot[:] = shared_alpha_dot[:]
-    gnc_struct.beta_dot[:] = shared_beta_dot[:]
-    gnc_struct.roll_rate_dot[:] = shared_roll_rate_dot[:]
-    gnc_struct.pitch_rate_dot[:] = shared_pitch_rate_dot[:]
-    gnc_struct.yaw_rate_dot[:] = shared_yaw_rate_dot[:]
-    gnc_struct.del_el_deg[:] = shared_del_el[:]
-    gnc_struct.del_ail_deg[:] = shared_del_ail[:]
-    gnc_struct.del_rud_deg[:] = shared_del_rud[:]
-    gnc_struct.Alon[:] = shared_Alon[:]
-    gnc_struct.Alat[:] = shared_Alat[:]
-    gnc_struct.long_half_amp[:] = shared_long_half_amp[:]
-    gnc_struct.lat_half_amp[:] = shared_lat_half_amp[:]
-
-    del shared_altitude, shared_Vfps, shared_alpha, shared_beta, \
-        shared_Nz, shared_alpha_dot, shared_beta_dot, \
-        shared_del_el, shared_del_ail, shared_del_rud, shared_Alon, \
-        shared_Alat, shared_long_half_amp, shared_lat_half_amp, \
-        shared_roll_rate_dot, shared_pitch_rate_dot, shared_yaw_rate_dot
+        ctl = controller.create_control_object(Alon, Blon, reg_array, Q, R, Q_end)
+        uoptimal,yoptimal,timeoptimal = controller.step_response(ctl)
+        gnc_struct.uoptimal[i] = uoptimal
+        gnc_struct.yoptimal[i] = yoptimal[:,2]*180/np.pi
+        gnc_struct.timeoptimal_sec[i] = timeoptimal
 
     print(time.time()-t1)
     plot_gnc_object(gnc_struct)

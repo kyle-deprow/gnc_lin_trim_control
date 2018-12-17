@@ -123,6 +123,7 @@ end
 
 % Solve the LQR problem.
 [Kw, S, E] = lqr(Aw, Bw, Qw, Rw);
+Kw
 
 % Set the state feedback gain and the integral error gain.
 kI = Kw(:,1:nreg);
@@ -141,7 +142,7 @@ sys_c.Dc2= zeros(m,nreg);
 
 %% Perform a step response.
 syscl = ss(Acl,Bcl,Ccl,Dcl);
-[yoptimal, timeoptimal_sec, x] = step(syscl*step_mag,3);
+[yoptimal, timeoptimal_sec, x] = step(syscl*0.1,3);
 
 %% Reconstruct the control.
 uoptimal = -Kw(:,[nreg+1:nreg+n,1:nreg])*x';
@@ -162,7 +163,7 @@ title('Control for servomechanism designs');
 
 %%%%% FREQUENCY ANALYSIS %%%%%
 % Perform frequency analysis of servo tracker.
-freq_resp = freq_analysis(sys_p, sys_c, w, 1, 3);
+%freq_resp = freq_analysis(sys_p, sys_c, w, 1, 3);
 
-% Plot frequency data.
-plot_freq_resp(freq_resp, w);
+%% Plot frequency data.
+%plot_freq_resp(freq_resp, w);

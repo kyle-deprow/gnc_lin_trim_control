@@ -1,10 +1,31 @@
-#! /usr/bin/env
+#! /usr/bin/env python3
+
 import numpy as np
 import pprint
 import control
 import matplotlib.pyplot as plt
 np.set_printoptions(suppress=True)
 
+class control_object():
+    def __init__(self):
+        self.sys_ss = None
+        self.sys_p = None
+        self.sys_c = None
+        self.sys_cl = None
+        self.Aw = None
+        self.Bw = None
+        self.Qw = None
+        self.Rw = None
+        self.Creg = None
+        self.Dreg = None
+        self.Kw = None
+        self.freq_fig = None
+        self.dtr = np.pi/180
+        self.rtd = 180/np.pi
+        self.nreg = None
+        self.n = None
+        self.m = None
+        
 class sys_setup():
     def __init__(self):
         self.A = None
@@ -19,199 +40,167 @@ class LQR_Controller():
     def __init__(self):
         pass
 
-    def lqr_control(self,A,B,reg_array,Q,R,Q_end=None):
+    def create_control_object(self,A,B,reg_array,Q,R,Q_end=None): 
+
+        ctl = control_object()
         n,m = B.shape
+        ctl.n = n
+        ctl.m = m
+
         C = np.eye(n)
         D = np.zeros([n,m])
-        sys_ss = control.ss(A,B,C,D)
+        ctl.sys_ss = control.ss(A,B,C,D)
+
+        # Create Plant system
+        ctl.sys_p = sys_setup()
+        ctl.sys_p.A = ctl.sys_ss.A
+        ctl.sys_p.B = ctl.sys_ss.B
+        ctl.sys_p.C = np.eye(n)
+        ctl.sys_p.D = np.zeros([n,1])
 
         # Optimal Contol: Tracker
-        Creg = np.zeros(C.shape[1])
-        Creg[reg_array] = 1
-        Dreg = sys_ss.D[2,:]
-        nreg = 1
+        ctl.Creg = np.zeros(C.shape[1])
+        ctl.Creg[reg_array] = 1
+        ctl.Dreg = ctl.sys_ss.D[2,:]
+        nreg = len(reg_array)
+        ctl.nreg = nreg
 
         # Build the servomechanizm state space model of the plant by appending an
         # integral error state for each regulating channel.
-        Aw = np.zeros([n+nreg, n+nreg])
-        Aw[0:nreg][0,1:] = Creg
+        ctl.Aw = np.zeros([n+nreg, n+nreg])
+        ctl.Aw[0:nreg][0,1:] = ctl.Creg
 
-        Aw[nreg:,nreg:] = sys_ss.A
+        ctl.Aw[nreg:,nreg:] = ctl.sys_ss.A
 
-        Bw = np.zeros([n+nreg, m])
-        Bw[0:nreg,:] = Dreg
-        Bw[nreg:,:] = sys_ss.B
-
-        # # Specify range of scale factor to apply to the integral error state.
-        # q = np.logspace(1,6,300)
+        ctl.Bw = np.zeros([n+nreg, m])
+        ctl.Bw[0:nreg,:] = ctl.Dreg
+        ctl.Bw[nreg:,:] = ctl.sys_ss.B
 
         # % Specify the LQR matrices.
-        Qw = np.zeros([n+nreg, n+nreg])
+        ctl.Qw = np.zeros([n+nreg, n+nreg])
         if Q_end:
-            Qw[n+nreg-1,n+nreg-1] = Q_end
+            ctl.Qw[n+nreg-1,n+nreg-1] = Q_end
 
-        # Rw = 1*np.eye(m)
-        Rw = R*np.eye(m)
-
-        # % Define frequency range for performing frequency analysis.
-        # w = np.logspace(-3,3,600)
-
-
-        # % Pass in the characteristics of the system.  Note, this process
-        # % returns plots.  This process assumes Dreg == 0.
+        ctl.Rw = R*np.eye(m)
 
         # Perform LQR Design # Set the integral error state weights to the desired scale factor
         for j in range(nreg):
-            Qw[j,j] = Q
+            ctl.Qw[j,j] = Q
 
         # Solve the LQR problem.
-        Kw, S, E = control.lqr(Aw, Bw, Qw, Rw)
-        # print(Kw)
+        ctl.Kw, S, E = control.lqr(ctl.Aw, ctl.Bw, ctl.Qw, ctl.Rw)
 
         # Set the state feedback gain and the integral error gain.
-        kI = Kw[:,:nreg][0]
-        Kv = Kw[:,nreg:][0]
+        kI = ctl.Kw[:,:nreg][0]
+        Kv = ctl.Kw[:,nreg:][0]
 
         # Build controller object to track reference theta
-        sys_c = sys_setup
-        sys_c.A = np.zeros([nreg,nreg])
-        sys_c.B= Creg
-        sys_c.B2= -np.eye(nreg)
-        sys_c.C = -kI
-        sys_c.D= -Kv
-        sys_c.D2= np.zeros([m,nreg])
+        ctl.sys_c = sys_setup()
+        ctl.sys_c.A = np.zeros([nreg,nreg])
+        ctl.sys_c.B= ctl.Creg
+        ctl.sys_c.B2= -np.eye(nreg)
+        ctl.sys_c.C = -kI
+        ctl.sys_c.D= -Kv
+        ctl.sys_c.D2= np.zeros([m,nreg])
 
         # Form closed loop system.
-        #Acl,Bcl,Ccl,Dcl = self.closed_loop_system(sys_p, sys_c)
-        sys_cl = self.create_closed_loop_system(sys_ss,Kw,nreg)
+        Acl,Bcl,Ccl,Dcl = self.closed_loop_system(ctl.sys_p, ctl.sys_c)
 
         # Perform a step response.
-        sys_cl = control.ss(Acl,Bcl,Ccl,Dcl)
-        dtr = np.pi/180
-        rtd = 180/np.pi
-        step_mag = dtr
-        timeoptimal_sec, yoptimal, x = control.step_response(sys_cl*0.1,T=np.arange(0,15,0.01),return_x=True,transpose=True)
+        ctl.sys_cl = control.ss(Acl,Bcl,Ccl,Dcl)
 
-        x = np.transpose(x)
+        return ctl
+
+#################################################################################
+    def perform_charting(self, ctl_object):
+        q = np.logspace(1,6,300)
+        w = np.logspace(-3,3,600)
+        PO = np.zeros([len(q),1])
+        tr = np.zeros_like(PO)
+        ts = np.zeros_like(PO)
+        wc = np.zeros_like(PO)
+        maxu = np.zeros_like(PO)
+        srmin = np.zeros_like(PO)
+        rdmin = np.zeros_like(PO)
+        nreg = ctl_object.Creg.shape[0]
+
+        Qw = np.zeros_like(ctl_object.Qw)
+
+        for i in range(len(q)):
+            for j in range(nreg):
+                Qw[j,j] = q[i]
+
+            try:
+                # Solve the LQR problem.
+                ctl.Kw, S, E = control.lqr(ctl.Aw, ctl.Bw, ctl.Qw, ctl.Rw)
+            except:
+                PO[i] = np.nan
+                tr[i] = np.nan
+                ts[i] = np.nan
+                wc[i] = np.nan
+                rdmin[i] = np.nan
+                srmin[i] = np.nan
+                maxu[i] = np.nan
+                continue
+
+            # Set the state feedback gain and the integral error gain.
+            kI = ctl.Kw[:,:nreg][0]
+            Kv = ctl.Kw[:,nreg:][0]
+
+            # Build controller object to track reference theta
+            sys_c = sys_setup()
+            sys_c.A = np.zeros([nreg,nreg])
+            sys_c.B= Creg
+            sys_c.B2= -np.eye(nreg)
+            sys_c.C = -kI
+            sys_c.D= -Kv
+            sys_c.D2= np.zeros([m,nreg])
+                
+            # Form closed loop system.
+            Acl,Bcl,Ccl,Dcl = self.closed_loop_system(ctl.sys_p, ctl.sys_c)
+
+            # Get the eigenvalues
+            ee = np.eig(Acl)
+            if any(np.real(ee) > 0):
+                continue
+
+#################################################################################
+    def step_response(self,ctl,t=10,t_step=0.01):
+        timeoptimal_sec, yoptimal, x = control.step_response(ctl.sys_cl*0.1,T=np.arange(0,3,t_step),return_x=True,transpose=True)
+
+        x = np.transpose(x)*np.pi/180
 
         # Reconstruct the control.
         # take first index of K matrix and append to end
-        ind = np.roll(np.arange(nreg+n),-1)
-        uoptimal = np.matmul(-Kw[0][ind],x)
+        ind = np.roll(np.arange(ctl.nreg+ctl.n),-1)
+        uoptimal = np.matmul(-ctl.Kw[0][ind],x)
 
         return uoptimal, yoptimal, timeoptimal_sec
 
 #################################################################################
-    # def perform_charting(self, sys_ss, Aw, Bw, Creg, Qw, Rw, q, w):
-        # #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-        # #%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-        # PO = np.zeros([len(q),1])
-        # tr = np.zeros_like(PO)
-        # ts = np.zeros_like(PO)
-        # wc = np.zeros_like(PO)
-        # maxu = np.zeros_like(PO)
-        # srmin = np.zeros_like(PO)
-        # rdmin = np.zeros_like(PO)
+    def freq_analysis(self,ctl_object,w):
+        nf = len(w)
+        ctl_object.freq_data.input.Lin = np.zeros([nf,1])
+        ctl_object.freq_data.input.ReturnDiff = np.zeros([nf,1])
+        ctl_object.freq_data.input.StabRobust = np.zeros([nf,1])
+        ctl_object.freq_data.input.LoopGainXover_rps = 0
+        ctl_object.freq_data.input.GMRD = np.array([0,0])
+        ctl_object.freq_data.input.PMRD = np.array([0,0])
+        ctl_object.freq_data.input.PMSR = np.array([0,0])
+        ctl_object.freq_data.input.Gnoise = np.zeros([nf,1])
 
-        # # Number of channels to regulate
-        # nreg = Creg.shape[0]
+        # initialize output freq analysis substructure
+        ctl_object.freq_data.output.S = np.zeros([nf,1])
+        ctl_object.freq_data.output.T = np.zeros([nf,1])
 
-        # # Get the dimensions of the problem
-        # n,m = sys_p.Bp.shape
-
-        # # Define magnitude of step.
-        # step_mag = 0.1
-
-        # for i in range(len(q)):
-            # # Set the integral error state weights to the current instance of the
-            # # scale factor.
-            # for j in range(nreg):
-                # Qw[j,j] = q[i]
-
-            # # Solve the LQR problem.
-            # try:
-                # Kw, S, E = control.lqr(Aw, Bw, Qw, Rw)
-            # except:
-                # PO[i] = np.nan
-                # tr[i] = np.nan
-                # ts[i] = np.nan
-                # wc[i] = np.nan
-                # rdmin[i] = np.nan
-                # srmin[i] = np.nan
-                # maxu[i] = np.nan
-                # continue
-
-            # sys_cl = self.create_closed_loop_system(sys_ss,Kw,nreg)
-
-            # # Get the eigenvalues.
-            # ee = eig(Acl)
-            # if any(real(ee) > 0)
-                # continue
-            # end
-
-            # # Perform frequency response from control (channel 1) to the ball
-            # # position output (output 1).
-            # freq_response = freq_analysis(sys_p, sys_c, w, 1, 3)
-
-            # # Get the Loop Gain crossover frequency.
-            # wc(i) = freq_response.input.LoopGainXover_rps
-
-            # # Get the Return Difference, I + L, and its min magnitude.
-            # rd = freq_response.input.ReturnDiff
-            # rdmin(i) = min(abs(rd))
-
-            # # Get the Stability Robustness, I + inv(L), and its min magnitdue.
-            # sr = freq_response.input.StabRobust
-            # srmin(i) = min(abs(sr))
-
-            # [y, time_sec, x] = step(syscl*step_mag)
-
-            # # Reconstruct the control and pick the biggest magnitude.
-            # u = -Kw(:,[nreg+1:nreg+n,1:nreg])*x'
-            # maxu(i) = max(abs(u))
-
-            # if cond(Acl) > 50000
-                # # Compute step information for the system.  Don't use stepinfo() as
-                # # it does not deliver correct results for multi-outputs.
-                # s = step_analysis(syscl, 1, 3, step_mag)
-
-                # # Get the transient metrics.
-                # PO(i) = s.PO
-                # tr(i) = s.tr90_sec
-                # ts(i) = s.ts98_sec
-            # else
-                # sout = stepinfo(syscl*step_mag)
-
-                # # Get the transient metrics.
-                # PO(i) = sout(3).Overshoot
-                # tr(i) = sout(3).RiseTime
-                # ts(i) = sout(3).SettlingTime
-            # end
-        # end
+        # Initialize system substructure
+        ctl_object.freq_data.system.OLEvalues = np.array([])
+        ctl_object.freq_data.system.CLEvalues = np.array([])
 
 
-    def create_closed_loop_system(self,sys_ss,Kw,nreg):
 
-        # % Form plant system.  Set output matrix for state feedback control.
-        n = sys_ss.A.shape[0]
-        sys_p = sys_setup()
-        sys_p.A = sys_ss.A
-        sys_p.B = sys_ss.B
-        sys_p.C = np.eye(n)
-        sys_p.D = np.zeros([n,1])
 
-        # Set the state feedback gain and the integral error gain.
-        kI = Kw[:,:nreg][0]
-        Kv = Kw[:,nreg:][0]
-
-        # Build controller object to track reference theta2.
-
-        # Form closed loop system.
-        Acl, Bcl, Ccl, Dcl = self.closed_loop_system(sys_p, sys_c)
-        # Perform a step response.
-        sys_cl = control.ss(Acl,Bcl,Ccl,Dcl)
-        return sys_cl
 
 #################################################################################
     def closed_loop_system(self, plant_sys, controller_sys):
@@ -287,7 +276,6 @@ class LQR_Controller():
             # Controller state defined.
 
             # Closed loop A matrix.
-
             A = np.zeros([n+m,n+m])
             A[:n,:n] = Ap + Bp*np.linalg.inv(Z)*Dc1*Cp
             A[:,n][:n] = (Bp*np.linalg.inv(Z)*Cc).flatten()
@@ -329,45 +317,24 @@ if __name__ == "__main__":
     Alon, Blon = lintrim.model.build_long_state_matrices(a,b,c,d)
     Blon = Blon[:,1].reshape((Blon.shape[0],1))
 
-    # M   = 10   # kg
-    # B1  = 10   # Nm-sec
-    # J1  = 15   # Nm-sec^2
-    # J2  = 15   # Nm-sec^2
-    # B2  = 100  # N-sec/m
-    # K1  = 100  # Nm/rad
-    # K2  = 130  # N/m
-    # K3  = 160  # N/m
-    # R   = 1    # m
-    # A = np.array([[0, 1, 0, 0, 0, 0],
-                  # [-K1/J1, 0, K1/J1, 0, 0 ,0],
-                  # [0, 0, 0, 1, 0, 0],
-                  # [K1/J2, 0, -(K1+R**2*K2)/J2, -B1/J2, R*K2/J2, 0],
-                  # [0, 0, 0, 0, 0, 1],
-                  # [0, 0, R*K2/M, 0, -(K2+K3)/M, -B2/M]])
+    reg_array = np.array([2])
+    controller = LQR_Controller()
+    Q = 400000
+    R = 0.01
+    Q_end = 300
+    ctl = controller.create_control_object(Alon,Blon,reg_array,Q,R,Q_end)
 
-    # B = np.array([0, 1/J1, 0, 0, 0, 0])
-    # B.shape = (len(B),1)
+    uoptimal, yoptimal, timeoptimal_sec = controller.step_response(ctl)
 
-    # n,m = B.shape
-    # C = np.eye(n)
-
-    # D = np.zeros([n,m])
-    # reg_array = np.array([2])
-    # controller = LQR_Controller()
-    # Q = 30000
-    # R = 0.1
-    # Q_end = 10000
-    # uoptimal, yoptimal, timeoptimal_sec = controller.lqr_control(Alon,Blon,reg_array,Q,R,Q_end)
-
-    # fig = plt.figure()
-    # ax1 = fig.add_subplot(2,1,1)
-    # ax1.plot(timeoptimal_sec,yoptimal[:,2],'-b')
-    # ax1.set_xlabel('Time(s)')
-    # ax1.set_ylabel(r'$\theta$ radians')
-    # ax2 = fig.add_subplot(2,1,2)
-    # ax2.plot(timeoptimal_sec,uoptimal,'-b')
-    # ax2.set_xlabel('Time(s)')
-    # ax2.set_ylabel(r'$\delta_{Elevator}$ (degrees)')
+    fig = plt.figure()
+    ax1 = fig.add_subplot(2,1,1)
+    ax1.plot(timeoptimal_sec,yoptimal[:,2]*180/np.pi,'-b')
+    ax1.set_xlabel('Time(s)')
+    ax1.set_ylabel(r'$\theta$ radians')
+    ax2 = fig.add_subplot(2,1,2)
+    ax2.plot(timeoptimal_sec,uoptimal,'-b')
+    ax2.set_xlabel('Time(s)')
+    ax2.set_ylabel(r'$\delta_{Elevator}$ (degrees)')
 
 
 

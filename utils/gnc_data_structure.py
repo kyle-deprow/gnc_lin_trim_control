@@ -28,3 +28,6 @@ class gnc_data_structure():
         self.Alat = np.zeros([self.len_count,4,4])
         self.long_half_amp = np.zeros([self.len_count,2])
         self.lat_half_amp = np.zeros([self.len_count,3])
+        self.uoptimal = np.zeros([self.len_count,300])
+        self.yoptimal = np.zeros([self.len_count,300])
+        self.timeoptimal_sec = np.zeros([self.len_count,300])

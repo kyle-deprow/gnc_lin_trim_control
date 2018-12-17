@@ -101,8 +101,6 @@ Bin = [ Bp; Bc1*Dp];
 Cin = -[ Dc1*Cp Cc];
 Din = -[ Dc1*Dp];
 
-% Perform frequency analysis for each input.  
-L_in = zeros(nf,1);
 RD_in= zeros(nf,1);
 SR_in= zeros(nf,1);
 Gnois= zeros(nf,1);
